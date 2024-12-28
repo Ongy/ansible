@@ -1,0 +1,166 @@
+- name: Check if etcd is configured
+  stat:
+    path: '/etc/kubernetes/manifests/etcd.yaml'
+  register: etcdyaml
+
+- name: Configure static etcd pod
+  when: not etcdyaml.stat.exists
+  block:
+  - name: Prepare Certificates
+    block:
+    - name: Create CSRs
+      block:
+      - name: Ensure dir exists
+        file:
+          path: /etc/kubernetes/pki/etcd
+          state: directory
+          mode: u=rwx,g=rx
+          owner: root
+
+      - name: Create Server Key+CSR
+        command:
+          cmd: |
+            openssl req -new -newkey rsa:2048 -nodes
+            -keyout /etc/kubernetes/pki/etcd/server.key
+            -out /etc/kubernetes/pki/etcd/server.csr
+            -subj "/CN={{ inventory_hostname }}"
+            -addext "basicConstraints=CA:false"
+            -addext "keyUsage=digitalSignature"
+            -addext "extendedKeyUsage=serverAuth,clientAuth"
+            -addext "subjectAltName = DNS:localhost,DNS:{{inventory_hostname}},IP:127.0.0.1,IP:{{ansible_default_ipv4.address}}"
+          creates: /etc/kubernetes/pki/etcd/server.csr
+
+      - name: Create Server Peer+CSR
+        command:
+          cmd: |
+            openssl req -new -newkey rsa:2048 -nodes
+            -keyout /etc/kubernetes/pki/etcd/peer.key
+            -out /etc/kubernetes/pki/etcd/peer.csr
+            -subj "/CN={{ inventory_hostname }}"
+            -addext "basicConstraints=CA:false"
+            -addext "keyUsage=digitalSignature,keyEncipherment"
+            -addext "extendedKeyUsage=serverAuth,clientAuth"
+            -addext "subjectAltName = DNS:localhost,DNS:{{inventory_hostname}},IP:127.0.0.1,IP:{{ansible_default_ipv4.address}}"
+          creates: /etc/kubernetes/pki/etcd/peer.csr
+
+    - name: Check if server crt exists
+      stat:
+        path: '/etc/kubernetes/pki/etcd/server.crt'
+      register: servercrt
+
+    - name: Get CSRs signed
+      when: not servercrt.stat.exists
+      block:
+      - name: Pull Server CSR
+        fetch:
+          src: /etc/kubernetes/pki/etcd/server.csr
+          dest: etcd-certs/{{inventory_hostname}}-server.csr
+          flat: true
+
+      - name: Pull Peer CSR
+        fetch:
+          src: /etc/kubernetes/pki/etcd/peer.csr
+          dest: etcd-certs/{{inventory_hostname}}-peer.csr
+          flat: true
+
+      - name: Push Server CSR to Signer
+        delegate_to: "{{ groups['controlplane'][0] }}"
+        copy:
+          src: etcd-certs/{{inventory_hostname}}-server.csr
+          dest: /tmp/etcd-cert-{{inventory_hostname}}-server.csr
+
+      - name: Push Peer CSR to Signer
+        delegate_to: "{{ groups['controlplane'][0] }}"
+        copy:
+          src: etcd-certs/{{inventory_hostname}}-peer.csr
+          dest: /tmp/etcd-cert-{{inventory_hostname}}-peer.csr
+
+      - name: Sign Certificates
+        delegate_to: "{{ groups['controlplane'][0] }}"
+        command:
+          cmd: |
+            openssl x509 -req -days 365
+            -in /tmp/{{item | basename}}
+            -out /tmp/{{item | basename | splitext | first}}.crt
+            -CA /etc/kubernetes/pki/etcd/ca.crt
+            -CAkey /etc/kubernetes/pki/etcd/ca.key
+            -CAcreateserial
+            -copy_extensions copy
+            -extensions san
+          creates: /tmp/{{item | basename | splitext | first}}.crt
+        loop:
+        - /tmp/etcd-cert-{{inventory_hostname}}-server.csr
+        - /tmp/etcd-cert-{{inventory_hostname}}-peer.csr
+
+      - name: Pull Server CRT
+        delegate_to: "{{ groups['controlplane'][0] }}"
+        fetch:
+          src: /tmp/etcd-cert-{{inventory_hostname}}-server.crt
+          dest: etcd-certs/{{inventory_hostname}}-server.crt
+          flat: true
+
+      - name: Pull Peer CRT
+        delegate_to: "{{ groups['controlplane'][0] }}"
+        fetch:
+          src: /tmp/etcd-cert-{{inventory_hostname}}-peer.crt
+          dest: etcd-certs/{{inventory_hostname}}-peer.crt
+          flat: true
+
+      - name: Pull ETCD CA
+        delegate_to: "{{ groups['controlplane'][0] }}"
+        fetch:
+          src: /etc/kubernetes/pki/etcd/ca.crt
+          dest: etcd-certs/ca.crt
+          flat: true
+
+      - name: Push Peer CRT
+        copy:
+          src: etcd-certs/{{inventory_hostname}}-peer.crt
+          dest: /etc/kubernetes/pki/etcd/peer.crt
+
+      - name: Push Server CRT
+        copy:
+          src: etcd-certs/{{inventory_hostname}}-server.crt
+          dest: /etc/kubernetes/pki/etcd/server.crt
+
+      - name: Push ETCD CA
+        copy:
+          src: etcd-certs/ca.crt
+          dest: /etc/kubernetes/pki/etcd/ca.crt
+
+  - name: Prepare Manifest
+    block:
+    - name: Ensure dir exists
+      file:
+        path: /etc/kubernetes/manifests
+        state: directory
+        mode: u=rwx,g=rx
+        owner: root
+
+    - name: Add Server to Cluster
+      delegate_to: "{{ groups['controlplane'][0] }}"
+      environment: 
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: member_add
+      command:
+        cmd: |
+          kubectl exec -in kube-system etcd-{{ groups['controlplane'][0] }} --
+          etcdctl
+            --cacert=/etc/kubernetes/pki/etcd/ca.crt
+            --cert=/etc/kubernetes/pki/etcd/server.crt
+            --key=/etc/kubernetes/pki/etcd/server.key
+            member add {{ ansible_hostname }}
+             --peer-urls=https://{{ansible_default_ipv4.address}}:2380
+
+    - name: Find Initial Cluster
+      shell:
+        cmd: |
+          {{ member_add.stdout_lines[-3] }}
+          echo "${ETCD_INITIAL_CLUSTER}"
+      register: initial_peers
+
+    - name: Template File
+      template:
+        dest: /etc/kubernetes/manifests/etcd.yaml
+        mode: 0600
+        src: etcd.yaml

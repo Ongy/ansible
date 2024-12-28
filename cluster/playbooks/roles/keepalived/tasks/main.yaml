@@ -1,0 +1,14 @@
+- name: Install keepalived
+  ansible.builtin.apt:
+    name: keepalived
+
+- name: Configure keepalived
+  ansible.builtin.template:
+    dest: /etc/keepalived/keepalived.conf
+    src: keepalived.conf
+
+- name: Start keepalived
+  ansible.builtin.systemd_service:
+    name: keepalived
+    state: started
+    enabled: true

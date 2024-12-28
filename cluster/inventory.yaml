@@ -1,0 +1,36 @@
+controlplane:
+  hosts:
+    toad:
+      ansible_host: 192.168.128.223
+      #ansible_host: toad.local.ongy.net
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+    toadette:
+      ansible_host: 192.168.128.245
+      #ansible_host: toadette.local.ongy.net
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+
+etcd_workers:
+  hosts:
+    bowser:
+      ansible_host: bowser.local.ongy.net
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+
+workers:
+  hosts:
+    birdo:
+      ansible_host: birdo.local.ongy.net
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+    yoshi:
+      ansible_host: yoshi.local.ongy.net
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+    mario:
+      ansible_host: mario.local.ongy.net
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+  children:
+    etcd_workers:
+
+cluster:
+  children:
+    controlplane:
+    workers:
+

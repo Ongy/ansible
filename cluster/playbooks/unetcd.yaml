@@ -1,0 +1,51 @@
+- name: Remove ETCD from worker
+  hosts: etcd_workers
+  become: true
+  tasks:
+
+  - name: Remove Manifest File
+    file:
+      state: "absent"
+      path: "/etc/kubernetes/manifests/etcd.yaml"
+
+  - name: List Cluster Nodes
+    delegate_to: "{{ groups['controlplane'][0] }}"
+    register: etcd_nodes
+    environment: 
+      KUBECONFIG: /etc/kubernetes/admin.conf
+    command:
+      cmd: |
+        kubectl exec -in kube-system etcd-{{ groups['controlplane'][0] }} --
+        etcdctl
+          --cacert=/etc/kubernetes/pki/etcd/ca.crt
+          --cert=/etc/kubernetes/pki/etcd/server.crt
+          --key=/etc/kubernetes/pki/etcd/server.key
+          member list
+
+  - name: Find Node ID
+    register: node_id
+    shell: |
+      echo "{{ etcd_nodes.stdout }}" | grep {{ansible_default_ipv4.address}} | cut -d ',' -f 1
+
+  - name: Remove Server from Cluster
+    delegate_to: "{{ groups['controlplane'][0] }}"
+    environment: 
+      KUBECONFIG: /etc/kubernetes/admin.conf
+    command:
+      cmd: |
+        kubectl exec -in kube-system etcd-{{ groups['controlplane'][0] }} --
+        etcdctl
+          --cacert=/etc/kubernetes/pki/etcd/ca.crt
+          --cert=/etc/kubernetes/pki/etcd/server.crt
+          --key=/etc/kubernetes/pki/etcd/server.key
+          member remove {{ node_id.stdout }}
+
+  - name: Remove ETCD state dir
+    file:
+      state: "absent"
+      path: "/var/lib/etcd"
+
+  - name: Remove ETCD certs
+    file:
+      state: "absent"
+      path: "/etc/kubernetes/pki/etcd/"

@@ -1,0 +1,90 @@
+- name: Setup Ongy
+  hosts: all
+  vars:
+    SUDOERS_FILE: /etc/sudoers.d/ansible
+  tasks:
+  - name: Add ongy
+    ansible.builtin.user:
+      name: ongy
+      group: users
+
+  - name: Check if ansible sudoers file exists
+    stat:
+      path: '{{ SUDOERS_FILE }}'
+    register: result
+
+  - name: Create ansible sudoers file if missing
+    when: not result.stat.exists
+    file:
+      path: '{{ SUDOERS_FILE }}'
+      state: touch
+      mode: u=rw,g=rw
+      owner: root
+
+  - name: Set ongy as passwordless sudo
+    lineinfile:
+      dest: '{{ SUDOERS_FILE }}'
+      state: present
+      line: 'ongy ALL=(ALL) NOPASSWD: ALL'
+      validate: 'visudo -cf %s'
+
+  - name: Set ongy ssh key
+    ansible.posix.authorized_key:
+      comment: "ongy-tux"
+      key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOgo47QdDcGbzuiCKHN+tQBND2IA6OpIKUNFkOji/i5M
+      manage_dir: true
+      user: ongy
+
+  - name: Set hostname
+    ansible.builtin.hostname:
+      name: '{{ inventory_hostname }}'
+
+#   - name: Remove odroid
+#     ansible.builtin.user:
+#       name: odroid
+#       state: "absent"
+#       remove: "true"
+# 
+#   - name: Remove ubuntu
+#     ansible.builtin.user:
+#       name: ubuntu
+#       state: "absent"
+#       remove: "true"
+
+  - name: Remove Packages from Image
+    block:
+    - name: Remove snap
+      ansible.builtin.apt:
+        name: snapd
+        state: absent
+        purge: true
+
+    - name: Remove NetworkManager
+      ansible.builtin.apt:
+        name: network-manager
+        state: absent
+        purge: true
+
+    - name: Remove ModemManager
+      ansible.builtin.apt:
+        name: modemmanager
+        state: absent
+        purge: true
+
+    - name: Remove wpasupplicant
+      ansible.builtin.apt:
+        name: wpasupplicant
+        state: absent
+        purge: true
+
+    - name: Remove dependencies that are no longer required and purge their configuration files
+      ansible.builtin.apt:
+        autoremove: yes
+        purge: true
+
+  - name: update
+    ansible.builtin.apt:
+      upgrade: "full"
+
+#  - name: reboot
+#    ansible.builtin.reboot:

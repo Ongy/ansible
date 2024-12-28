@@ -1,0 +1,64 @@
+- name: Create control plane
+  command:
+    cmd: kubeadm init --control-plane-endpoint "kubernetes.local.ongy.net:6443" --upload-certs --skip-phases=addon/kube-proxy
+    creates: /etc/kubernetes/admin.conf
+
+- name: Check if cilium cli is installed
+  stat:
+    path: '/usr/local/bin/cilium'
+  register: ciliumcli
+
+- name: Provide cilium cli
+  when: not ciliumcli.stat.exists
+  block:
+  - name: Get cilium version
+    ansible.builtin.uri:
+      return_content: true
+      url: https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt
+    register: ciliumversion
+
+  - name: Download Cilium cli
+    ansible.builtin.get_url:
+      url: "https://github.com/cilium/cilium-cli/releases/download/{{ ciliumversion.content | trim }}/cilium-linux-{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}.tar.gz"
+      dest: /tmp/cilium.tar.gz
+
+  - name: Unpack cilium cli
+    command:
+      cmd: tar -x -C /usr/local/bin -f /tmp/cilium.tar.gz
+      creates: /usr/local/bin/cilium
+
+- name: Install gatwayapi CRDs
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  block:
+    - command: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+    - command: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
+    - command: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+    - command: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
+    - command: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
+    - command: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml
+
+
+- name: Install cilium in cluster
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  command:
+    cmd: |
+      /usr/local/bin/cilium install 
+      --set kubeProxyReplacement=true
+      --set gatewayAPI.enabled=true
+      --set gatewayAPI.hostNetwork.enabled=true
+      --set gatewayAPI.hostNetwork.matchLabels.node-role.kubernetes.io/control-plane=""
+      --set envoy.enabled=true
+      --set envoy.securityContext.capabilities.keepCapNetBindService=true
+      --set envoy.securityContext.capabilities.envoy={NET_BIND_SERVICE,NET_ADMIN,SYS_ADMIN}
+    creates: /opt/cni/bin/cilium-cni
+
+- name: Apply kustomize file
+  retries: 3
+  delay: 3
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  command:
+    cmd: kubectl apply -k https://github.com/Ongy/argocd-bootstrap/argocd
+

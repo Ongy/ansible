@@ -1,0 +1,32 @@
+- name: Initialize Kubernetes
+  hosts: cluster
+  become: true
+  roles:
+  - k8s-node
+
+# - name: Initialize Kubernetes
+#   hosts: "{{ groups['controlplane'][0] }}"
+#   become: true
+#   roles:
+#   - keepalived
+#   - k8s-control-plane-leader
+
+# - name: Join Control Plane
+#   hosts: controlplane
+#   become: true
+#   roles:
+#   - k8s-control-plane
+#   - keepalived
+#  
+# - name: Initialize workers
+#   hosts: workers
+#   become: true
+#   roles:
+#   - k8s-worker
+
+# - name: Initialize etcd on workers
+#   hosts: etcd_workers
+#   become: true
+#   roles:
+#   - etcd-worker
+# 

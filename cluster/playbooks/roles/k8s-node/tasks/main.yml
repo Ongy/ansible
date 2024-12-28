@@ -1,0 +1,140 @@
+- name: Load br_netfilter
+  community.general.modprobe:
+    name: br_netfilter
+    persistent: present
+
+- name: Load overlay
+  community.general.modprobe:
+    name: overlay
+    persistent: present
+
+- ansible.posix.sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: '1'
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    sysctl_set: true
+
+- ansible.posix.sysctl:
+    name: net.bridge.bridge-nf-call-ip6tables
+    value: '1'
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    sysctl_set: true
+
+- ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    sysctl_set: true
+
+- ansible.posix.sysctl:
+    name: net.ipv4.conf.all.src_valid_mark
+    value: '0'
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    sysctl_set: true
+
+- name: Set apt compatible arch
+  set_fact:
+    arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+
+- name: Add docker repo
+  block:
+    - name: Ensure keyring dir
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: u=rwx,g=rx,o=rx
+        owner: root
+
+    - name: Add apt key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+
+    - name: Add repo source
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ arch }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
+
+- name: Setup Containerd
+  block:
+  - name: Install containerd
+    ansible.builtin.apt:
+      name: containerd.io
+
+  - name: Check if packaged config
+    command: grep -q "Docker Inc." /etc/containerd/config.toml
+    register: isdockerconf
+    check_mode: false
+    ignore_errors: true
+    changed_when: false
+    failed_when: false
+
+  - name: Configure Containerd
+    when: isdockerconf.rc == 0
+    block:
+
+    - name: Stop containerd
+      ansible.builtin.systemd_service:
+        name: containerd
+        state: stopped
+
+    - name: Generate default config
+      ansible.builtin.shell:
+        cmd: containerd config default > /etc/containerd/config.toml
+
+    - name: Setup systemd cgroups
+      ansible.builtin.replace:
+        regexp: SystemdCgroup = false
+        replace: SystemdCgroup = true
+        path: /etc/containerd/config.toml
+
+  - name: Start containerd
+    ansible.builtin.systemd_service:
+      name: containerd
+      state: started
+      enabled: true
+
+- name: Install task dependencies
+  block:
+  - name: Install apt transport https
+    ansible.builtin.apt:
+      name: apt-transport-https
+
+  - name: Install gpg
+    ansible.builtin.apt:
+      name: gpg
+
+  - name: Install curl
+    ansible.builtin.apt:
+      name: curl
+
+- name: Add kubernetes repo key
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Add repo source
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+    filename: kubernetes
+
+- name: Install kubeadm
+  ansible.builtin.apt:
+    name: kubeadm
+
+- name: Install kubelet
+  ansible.builtin.apt:
+    name: kubelet
+
+- name: Allow sysctl for wireguard
+  lineinfile:
+    dest: '/etc/default/kubelet'
+    state: present
+    create: true
+    line: KUBELET_EXTRA_ARGS='--allowed-unsafe-sysctls=net.ipv4.conf.all.src_valid_mark'
+
+- name: start kubelet
+  ansible.builtin.systemd_service:
+    name: kubelet
+    state: started
+    enabled: true
