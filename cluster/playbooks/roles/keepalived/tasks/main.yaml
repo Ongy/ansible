@@ -7,6 +7,12 @@
     dest: /etc/keepalived/keepalived.conf
     src: keepalived.conf
 
+- name: Install keepalived notify script
+  ansible.builtin.template:
+    dest: /usr/local/bin/keepalived-notify.sh
+    src: keepalived-notify.sh
+    mode: 0755
+
 - name: Start keepalived
   ansible.builtin.systemd_service:
     name: keepalived
