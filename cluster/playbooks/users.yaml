@@ -2,6 +2,9 @@
   hosts: all
   vars:
     SUDOERS_FILE: /etc/sudoers.d/ansible
+  roles:
+  - wifi
+  - network
   tasks:
   - name: Add ongy
     ansible.builtin.user:
@@ -28,12 +31,28 @@
       line: 'ongy ALL=(ALL) NOPASSWD: ALL'
       validate: 'visudo -cf %s'
 
-  - name: Set ongy ssh key
-    ansible.posix.authorized_key:
-      comment: "ongy-tux"
-      key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOgo47QdDcGbzuiCKHN+tQBND2IA6OpIKUNFkOji/i5M
-      manage_dir: true
-      user: ongy
+  - name: Add SSH keys
+    block:
+    - name: Set ongy-tux ssh key
+      ansible.posix.authorized_key:
+        comment: "ongy-tux"
+        key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOgo47QdDcGbzuiCKHN+tQBND2IA6OpIKUNFkOji/i5M
+        manage_dir: true
+        user: ongy
+
+    - name: Set corpa-hsm ssh key
+      ansible.posix.authorized_key:
+        comment: "corpa-hsm"
+        key: ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBAi6EP1GgtzfaThhWwth8nzyZSGuMoDieswj+pIxfQQorMjcMIBjVNLjbh4WkscDgE9uliOu1tf+DhO6p9NY/3w=
+        manage_dir: true
+        user: ongy
+
+    - name: Set framework 12" ssh key
+      ansible.posix.authorized_key:
+        comment: "ongy@ongy-nixos"
+        key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK6ukB8JFvR6FqcIl11dNne0o+jo0hglRrRQvrwmbebe
+        manage_dir: true
+        user: ongy
 
   - name: Set hostname
     ansible.builtin.hostname:
@@ -71,9 +90,9 @@
         state: absent
         purge: true
 
-    - name: Remove wpasupplicant
+    - name: Remove Netplan
       ansible.builtin.apt:
-        name: wpasupplicant
+        name: netplan
         state: absent
         purge: true
 
@@ -82,9 +101,9 @@
         autoremove: yes
         purge: true
 
-  - name: update
-    ansible.builtin.apt:
-      upgrade: "full"
+#  - name: update
+#    ansible.builtin.apt:
+#      upgrade: "full"
 
 #  - name: reboot
 #    ansible.builtin.reboot:
