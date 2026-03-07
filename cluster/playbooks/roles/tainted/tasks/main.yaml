@@ -1,0 +1,7 @@
+- name: Join node to Cluster
+  when: (htpc is defined) and (htpc | bool)
+  block:
+  - name: Apply htpc taint
+    delegate_to: "{{ groups['controlplane'][0] }}"
+    command:
+      cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf taint nodes {{ ansible_hostname }} ongy.net/htpc:NoSchedule

@@ -30,3 +30,9 @@
   roles:
   - etcd-worker
 
+- name: Seutp Taints
+  hosts: cluster
+  become: true
+  roles:
+  - tainted
+
