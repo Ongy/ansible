@@ -20,12 +20,19 @@ workers:
     birdo:
       ansible_host: birdo.local.ongy.net
       ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
-    yoshi:
-      ansible_host: yoshi.local.ongy.net
-      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
     mario:
       ansible_host: mario.local.ongy.net
       ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+    yoshi:
+      #ansible_host: yoshi.local.ongy.net
+      ansible_host: 192.168.128.134
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+      wifi: wlp2s0
+    wario:
+      #ansible_host: wario.local.ongy.net
+      ansible_host: 192.168.128.191
+      ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
+      wifi: wlP2p33s0
   children:
     etcd_workers:
 
@@ -33,4 +40,3 @@ cluster:
   children:
     controlplane:
     workers:
-
