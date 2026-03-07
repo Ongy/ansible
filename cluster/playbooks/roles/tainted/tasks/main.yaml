@@ -4,4 +4,4 @@
   - name: Apply htpc taint
     delegate_to: "{{ groups['controlplane'][0] }}"
     command:
-      cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf taint nodes {{ ansible_hostname }} ongy.net/htpc:NoSchedule
+      cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf taint nodes --overwrite {{ ansible_hostname }} ongy.net/htpc:NoSchedule
