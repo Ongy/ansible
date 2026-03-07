@@ -1,0 +1,90 @@
+- name: update control plane
+  hosts: controlplane
+  become: true
+  serial: 1
+  tasks:
+  - name: update
+    ansible.builtin.apt:
+      upgrade: "full"
+
+  - name: Stop keepalived
+    ansible.builtin.systemd_service:
+      name: keepalived
+      state: stopped
+      enabled: true
+
+  - name: Drain node
+    delegate_to: "{{ groups['controlplane'][0] }}"
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf
+    command:
+      kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data
+
+  - name: Restart kubelet
+    ansible.builtin.systemd_service:
+      name: kubelet
+      state: restarted
+
+  - name: Is Leader
+    command: "[ {{ inventory_hostname }} = {{ groups['controlplane'][0] }} ]"
+    register: isleader
+    check_mode: false
+    ignore_errors: true
+    changed_when: false
+    failed_when: false
+
+  - name: Update control plane cluster
+    when: isleader.rc == 0
+    command:
+      cmd: kubeadm upgrade apply --yes v$(dpkg -l kubeadm | grep kubeadm | awk '{ print $3 }' | cut -d '-' -f 1)
+
+  - name: Update control plane node
+    when: isleader.rc != 0
+    command:
+      cmd: kubeadm upgrade node
+
+  - name: Uncordon node
+    delegate_to: "{{ groups['controlplane'][0] }}"
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf
+    command:
+      kubectl uncordon {{ inventory_hostname }}
+
+  - name: Start keepalived
+    ansible.builtin.systemd_service:
+      name: keepalived
+      state: started
+      enabled: true
+
+
+- name: Update workers
+  hosts: workers
+  become: true
+  serial: 1
+  tasks:
+  - name: update
+    ansible.builtin.apt:
+      upgrade: "full"
+
+  - name: Drain node
+    delegate_to: "{{ groups['controlplane'][0] }}"
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf
+    command:
+      kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data
+
+  - name: Restart kubelet
+    ansible.builtin.systemd_service:
+      name: kubelet
+      state: restarted
+
+  - name: Update worker plane node
+    command:
+      cmd: kubeadm upgrade node
+
+  - name: Uncordon node
+    delegate_to: "{{ groups['controlplane'][0] }}"
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf
+    command:
+      kubectl uncordon {{ inventory_hostname }}
