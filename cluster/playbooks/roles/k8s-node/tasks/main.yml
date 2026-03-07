@@ -32,6 +32,24 @@
     sysctl_file: /etc/sysctl.d/k8s.conf
     sysctl_set: true
 
+- ansible.posix.sysctl:
+    name: fs.inotify.max_user_watches
+    value: '60000000'
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    sysctl_set: true
+
+- name: Swap handling
+  when: ansible_swaptotal_mb > 0
+  block:
+  - name: Disable swap for current session
+    command: swapoff -a
+    become: true
+
+  - name: Disable swap
+    ansible.builtin.systemd_service:
+      name: swapfile.swap
+      masked: true
+
 - name: Set apt compatible arch
   set_fact:
     arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
