@@ -1,0 +1,14 @@
+- name: Setup Ongy
+  hosts: all
+  tasks:
+  - name: Set ongy as passwordless sudo
+    when: (htpc is defined) and (htpc | bool)
+    lineinfile:
+      dest: '/etc/fstab'
+      state: present
+      line: 'mario.local.ongy.net:/srv/share /mnt/mario nfs _netdev 0 2'
+
+  - name: Install nfs-common
+    ansible.builtin.apt:
+      name: nfs-common
+      state: present
