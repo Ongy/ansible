@@ -1,0 +1,93 @@
+- name: Realm
+  hosts: localhost
+  gather_facts: false
+  vars:
+    KEYCLOAK_URL: https://keycloak.local.ongy.net
+    KEYCLOAK_REALM: local.ongy.net
+  tasks:
+  - name: Ensure realm exists
+    community.general.keycloak_realm:
+      auth_keycloak_url: "{{ KEYCLOAK_URL }}"
+      auth_username: admin
+      auth_password: admin
+      auth_realm: master
+      realm: "{{ KEYCLOAK_REALM }}"
+      enabled: true
+
+  - name: Ensure groups client scope
+    community.general.keycloak_clientscope:
+      auth_keycloak_url: "{{ KEYCLOAK_URL }}"
+      auth_username: admin
+      auth_password: admin
+      auth_realm: master
+      realm: "{{ KEYCLOAK_REALM }}"
+
+      name: groups
+      protocol: openid-connect
+      description: Provide groups for openid clients based on roles in keycloak
+      protocol_mappers:
+      - name: groups
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-realm-role-mapper
+        config:
+          "access.token.claim": "true"
+          "claim.name": "groups"
+          "id.token.claim": "true"
+          "introspection.token.claim": "true"
+          "jsonType.label": "String"
+          "multivalued": "true"
+          "user.attribute": "foo"
+
+  - name: Create Argo Client
+    community.general.keycloak_client:
+      auth_keycloak_url: "{{ KEYCLOAK_URL }}"
+      auth_username: admin
+      auth_password: admin
+      auth_realm: master
+      realm: "{{ KEYCLOAK_REALM }}"
+
+      client_id: argocd
+      consent_required: false
+      default_client_scopes:
+      - groups
+
+  - name: Create CEPH client
+    community.general.keycloak_client:
+      auth_keycloak_url: "{{ KEYCLOAK_URL }}"
+      auth_username: admin
+      auth_password: admin
+      auth_realm: master
+      realm: "{{ KEYCLOAK_REALM }}"
+
+      client_id: ceph
+      consent_required: false
+      name: Ceph Dashboard
+      direct_access_grants_enabled: false
+      public_client: false
+
+      protocol_mappers:
+      - name: aud-mapper-ceph
+        protocol: openid-connect
+        protocolMapper: oidc-audience-mapper
+        config:
+          "access.token.claim": "true"
+          "id.token.claim": "true"
+          "included.client.audience": "ceph"
+          "introspection.token.claim": "true"
+          "lightweight.claim": "false"
+
+  - name: Read CEPH client secret
+    register: ceph_client_id
+    community.general.keycloak_clientsecret_info:
+      auth_keycloak_url: "{{ KEYCLOAK_URL }}"
+      auth_username: admin
+      auth_password: admin
+      auth_realm: master
+      realm: "{{ KEYCLOAK_REALM }}"
+      client_id: ceph
+
+  - name: Store ceph client secret
+    ansible.builtin.copy:
+      dest: ceph.secret
+      content: "{{ ceph_client_id.clientsecret_info.value }}"
+
