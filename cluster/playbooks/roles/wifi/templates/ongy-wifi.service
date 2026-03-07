@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wpa-supplicant for the ongy wifi network
+
+[Service]
+ExecStart=/usr/sbin/wpa_supplicant -i {{wifi}} -c /etc/wpa_supplicant/ongy.conf
+
+[Install]
+WantedBy=multi-user.target
+
