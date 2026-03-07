@@ -1,0 +1,10 @@
+- name: Configure networkd
+  ansible.builtin.template:
+    dest: /etc/systemd/network/any.network
+    src: any.network
+
+- name: Start networkd
+  ansible.builtin.systemd_service:
+    name: systemd-networkd
+    state: started
+    enabled: true
