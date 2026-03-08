@@ -29,12 +29,14 @@ workers:
       ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
       wifi: wlp2s0
       htpc: true
+      music: true
     wario:
       #ansible_host: wario.local.ongy.net
       ansible_host: 192.168.128.191
       ansible_ssh_private_key_file: /home/ongy/.ssh/tux-internal
       wifi: wlP2p33s0
       htpc: true
+      music: true
   children:
     etcd_workers:
 

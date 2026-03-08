@@ -1,0 +1,5 @@
+[Unit]
+Description=Run sendspin in daemon mode
+
+[Service]
+ExecStart=/home/ongy/.local/bin/sendspin daemon

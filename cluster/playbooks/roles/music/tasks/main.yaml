@@ -1,0 +1,56 @@
+- name: Install and enable sendspin
+  when: ansible_facts['python']['version']['minor'] >= 12
+  block:
+  - name: Install libportaudio2
+    ansible.builtin.apt:
+      name: libportaudio2
+      state: present
+
+  - name: Uninstall squeezelite
+    ansible.builtin.apt:
+      name: squeezelite-pulseaudio
+      state: absent
+      purge: true
+
+  - name: Install pipx
+    ansible.builtin.apt:
+      name: pipx
+      state: present
+
+  - name: Install sendspin with pipx
+    become: yes
+    become_user: ongy
+    command:
+      cmd: pipx install sendspin
+      creates: /home/ongy/.local/bin/sendspin
+
+  - name: Create required systemd directories
+    ansible.builtin.file:
+      path: /home/ongy/.config/systemd/user/graphical-session.target.wants/
+      state: directory
+      owner: ongy
+      group: ongy
+      mode: '0750'
+
+  - name: Add sendspin user service
+    ansible.builtin.template:
+      dest: /home/ongy/.config/systemd/user/sendspin.service
+      src: sendspin.service
+      owner: ongy
+      group: ongy
+
+  - name: Enable sendspin user service
+    ansible.builtin.file:
+      dest: /home/ongy/.config/systemd/user/graphical-session.target.wants/sendspin.service
+      src: /home/ongy/.config/systemd/user/sendspin.service
+      state: link
+      owner: ongy
+      group: ongy
+
+- name: Install and enable squeezelite
+  when: ansible_facts['python']['version']['minor'] < 12
+  block:
+  - name: Install squeezelite
+    ansible.builtin.apt:
+      name: squeezelite-pulseaudio
+      state: present

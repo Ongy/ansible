@@ -1,5 +1,8 @@
 - name: Setup Ongy
   hosts: all
+  roles:
+  - role: music
+    when: (music is defined) and (music | bool)
   tasks:
   - name: Set ongy as passwordless sudo
     when: (htpc is defined) and (htpc | bool)
